@@ -523,6 +523,100 @@ def fetch_open_meteo_rainfall(stations, past_hours=48, forecast_hours=96):
     return pd.DataFrame(rows)
 
 
+
+@st.cache_data(ttl=600)
+def fetch_open_meteo_hourly_series(area, lat, lon, past_hours=48, forecast_hours=96):
+    """
+    Fetch hourly rainfall time series for a single selected station so the app can
+    display a rainfall hyetograph with exact local timing.
+    """
+    now_local = pd.Timestamp.now(tz="Asia/Manila").floor("h")
+    past_start = now_local - pd.Timedelta(hours=int(past_hours))
+    forecast_end = now_local + pd.Timedelta(hours=int(forecast_hours))
+
+    past_days = max(2, int((past_hours + 23) // 24))
+    forecast_days = max(4, int((forecast_hours + 23) // 24) + 1)
+
+    url = "https://api.open-meteo.com/v1/forecast"
+    params = {
+        "latitude": lat,
+        "longitude": lon,
+        "hourly": "precipitation,rain,showers",
+        "timezone": "Asia/Manila",
+        "past_days": past_days,
+        "forecast_days": forecast_days,
+    }
+
+    r = requests.get(url, params=params, timeout=20)
+    r.raise_for_status()
+    data = r.json()
+    hourly = data.get("hourly", {})
+
+    hdf = pd.DataFrame({
+        "time": pd.to_datetime(hourly.get("time", []), errors="coerce"),
+        "precipitation": pd.to_numeric(pd.Series(hourly.get("precipitation", [])), errors="coerce"),
+        "rain": pd.to_numeric(pd.Series(hourly.get("rain", [])), errors="coerce"),
+        "showers": pd.to_numeric(pd.Series(hourly.get("showers", [])), errors="coerce"),
+    })
+
+    if hdf.empty:
+        return pd.DataFrame(columns=["time", "rain_mm", "period"])
+
+    hdf["time"] = hdf["time"].dt.tz_localize("Asia/Manila", nonexistent="shift_forward", ambiguous="NaT")
+    hdf["rain_mm"] = hdf[["precipitation", "rain", "showers"]].max(axis=1).fillna(0)
+    hdf = hdf[(hdf["time"] >= past_start) & (hdf["time"] <= forecast_end)].copy()
+
+    hdf["period"] = "Past observed/estimated"
+    hdf.loc[hdf["time"] > now_local, "period"] = "Forecast"
+    hdf["time_label"] = hdf["time"].dt.strftime("%b %d, %I:%M %p")
+    hdf["hour"] = hdf["time"].dt.strftime("%m-%d %H:%M")
+    hdf["area"] = area
+    hdf["is_forecast"] = hdf["time"] > now_local
+
+    return hdf.reset_index(drop=True)
+
+
+def summarize_rain_timing(hourly_df, threshold_mm=0.1, forecast_only=True):
+    """
+    Return practical timing summary for rainfall hours. threshold_mm avoids treating
+    trace rainfall as meaningful rainfall.
+    """
+    if hourly_df is None or hourly_df.empty:
+        return {
+            "Rain starts": "No data",
+            "Peak time": "No data",
+            "Peak intensity": "No data",
+            "Rain ends": "No data",
+            "Wet hours": 0,
+            "Total rainfall": "0.0 mm",
+        }
+
+    work = hourly_df.copy()
+    if forecast_only and "is_forecast" in work:
+        work = work[work["is_forecast"] == True].copy()
+
+    wet = work[work["rain_mm"] >= float(threshold_mm)].copy()
+    if wet.empty:
+        return {
+            "Rain starts": f"No rainfall ≥ {threshold_mm} mm/hr",
+            "Peak time": "None",
+            "Peak intensity": "0.0 mm/hr",
+            "Rain ends": "None",
+            "Wet hours": 0,
+            "Total rainfall": f"{work['rain_mm'].sum():.1f} mm",
+        }
+
+    peak_idx = wet["rain_mm"].idxmax()
+    peak = wet.loc[peak_idx]
+    return {
+        "Rain starts": pd.Timestamp(wet["time"].iloc[0]).strftime("%b %d, %I:%M %p"),
+        "Peak time": pd.Timestamp(peak["time"]).strftime("%b %d, %I:%M %p"),
+        "Peak intensity": f"{float(peak['rain_mm']):.1f} mm/hr",
+        "Rain ends": pd.Timestamp(wet["time"].iloc[-1]).strftime("%b %d, %I:%M %p"),
+        "Wet hours": int(len(wet)),
+        "Total rainfall": f"{float(work['rain_mm'].sum()):.1f} mm",
+    }
+
 def rain_circle_radius(total_mm):
     if total_mm is None or pd.isna(total_mm):
         return 8
@@ -874,6 +968,75 @@ if show_rain_layer and not rainfall_df.empty:
         .sort_values(["possible_flood_risk", "total_window_mm"], ascending=[True, False]),
         use_container_width=True
     )
+
+    st.subheader("Rainfall Hyetograph: Exact Hourly Rain Timing")
+    st.caption("Hyetograph bars show hourly rainfall in mm/hr using Asia/Manila time. Use this to see what exact hour rainfall is expected to start, peak, and end.")
+
+    area_options = rainfall_df["area"].dropna().tolist()
+    default_area_index = 0
+    if "Marikina" in area_options:
+        default_area_index = area_options.index("Marikina")
+
+    selected_area = st.selectbox(
+        "Select city / rainfall node for hyetograph",
+        area_options,
+        index=default_area_index
+    )
+
+    selected_row = rainfall_df[rainfall_df["area"] == selected_area].iloc[0]
+    hyeto_df = fetch_open_meteo_hourly_series(
+        selected_area,
+        float(selected_row["lat"]),
+        float(selected_row["lon"]),
+        past_rain_hours,
+        forecast_rain_hours
+    )
+
+    threshold_mm = st.slider(
+        "Minimum rainfall to count as a rainy hour (mm/hr)",
+        0.0, 5.0, 0.1, 0.1
+    )
+
+    forecast_timing = summarize_rain_timing(hyeto_df, threshold_mm=threshold_mm, forecast_only=True)
+    full_window_timing = summarize_rain_timing(hyeto_df, threshold_mm=threshold_mm, forecast_only=False)
+
+    h1, h2 = st.columns(2)
+    with h1:
+        st.markdown("**Forecast rainfall timing**")
+        st.table(pd.DataFrame([forecast_timing]).T.rename(columns={0: "Value"}))
+    with h2:
+        st.markdown("**Past + forecast window timing**")
+        st.table(pd.DataFrame([full_window_timing]).T.rename(columns={0: "Value"}))
+
+    if not hyeto_df.empty:
+        hyeto_view = hyeto_df.copy()
+        chart_mode = st.radio(
+            "Hyetograph display",
+            ["Forecast only", "Past + forecast"],
+            horizontal=True
+        )
+        if chart_mode == "Forecast only":
+            hyeto_view = hyeto_view[hyeto_view["is_forecast"] == True].copy()
+
+        # Streamlit bar chart needs a simple index for readable labels.
+        chart_df = hyeto_view[["hour", "rain_mm"]].set_index("hour")
+        st.bar_chart(chart_df, y="rain_mm", height=320)
+
+        with st.expander("Show hourly rainfall table"):
+            st.dataframe(
+                hyeto_view[["time_label", "period", "rain_mm", "precipitation", "rain", "showers"]]
+                .rename(columns={
+                    "time_label": "Time (Asia/Manila)",
+                    "period": "Period",
+                    "rain_mm": "Rainfall used (mm/hr)",
+                    "precipitation": "Open-Meteo precipitation",
+                    "rain": "Open-Meteo rain",
+                    "showers": "Open-Meteo showers",
+                }),
+                use_container_width=True
+            )
+    else:
+        st.warning("No hourly rainfall data available for this selected rainfall node.")
 
 st.subheader("Detected Flood Reports")
 if len(flood_df):
