@@ -332,7 +332,7 @@ def rainfall_node_tooltip(row, nearby_count, trend):
     <div style="font-size: 12px; min-width: 240px;">
       <b>{row['area']}</b><br>
       Past 48h / selected past: <b>{row.get('past_total_mm', 'No data')} mm</b><br>
-      Next 144h / selected forecast: <b>{row.get('forecast_total_mm', 'No data')} mm</b><br>
+      Next 168h / selected forecast: <b>{row.get('forecast_total_mm', 'No data')} mm</b><br>
       Peak hourly rain: <b>{row.get('max_hourly_mm', 'No data')} mm/hr</b><br>
       Flood-risk estimate: <b>{row.get('possible_flood_risk', 'Unknown')}</b><br>
       Nearby flood reports: <b>{nearby_count}</b><br>
@@ -405,7 +405,7 @@ def forecast_rainfall_chart_html(future_df, width=420, height=150):
 
 
 @st.cache_data(ttl=600)
-def fetch_open_meteo_rainfall(stations, past_hours=48, forecast_hours=144):
+def fetch_open_meteo_rainfall(stations, past_hours=48, forecast_hours=168):
     """
     Fetch hourly rainfall for the last N hours and next N hours from Open-Meteo.
     Uses forecast API with past_days and forecast_days. No API key required.
@@ -525,7 +525,7 @@ def fetch_open_meteo_rainfall(stations, past_hours=48, forecast_hours=144):
 
 
 @st.cache_data(ttl=600)
-def fetch_open_meteo_hourly_series(area, lat, lon, past_hours=48, forecast_hours=144):
+def fetch_open_meteo_hourly_series(area, lat, lon, past_hours=48, forecast_hours=168):
     """
     Fetch hourly rainfall time series for a single selected station so the app can
     display a rainfall hyetograph with exact local timing.
@@ -820,7 +820,7 @@ with st.sidebar:
         index=0
     )
     past_rain_hours = st.slider("Past rainfall accumulation window (hours)", 1, 48, 48)
-    forecast_rain_hours = st.slider("Projected rainfall window (hours)", 1, 144, 144)
+    forecast_rain_hours = st.slider("Projected rainfall window (hours)", 1, 168, 168)
     st.caption("Rainfall layer uses past accumulation + forecast rainfall. This is possible flood risk, not confirmed flooding.")
 
     st.divider()
