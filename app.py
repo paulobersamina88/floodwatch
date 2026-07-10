@@ -1037,7 +1037,7 @@ def create_facebook_rainfall_snapshot(
             x2 = x1 + box_width
             y2 = y1 + box_height
 
-            current = row.get("current_mmhr")
+            peak_hourly = row.get("max_hourly_mm")
             forecast = row.get("forecast_total_mm")
             risk = row.get(
                 "possible_flood_risk",
@@ -1046,7 +1046,7 @@ def create_facebook_rainfall_snapshot(
 
             current_text = (
                 f"{float(current):.1f} mm/hr"
-                if pd.notna(current)
+                if pd.notna(peak_hourly)
                 else "No data"
             )
 
@@ -1140,12 +1140,13 @@ def create_facebook_rainfall_snapshot(
 
             risk = row.get("possible_flood_risk", "Unknown")
             outline = _snapshot_risk_rgb(risk)
-            current = row.get("current_mmhr")
+            peak_hourly = row.get("max_hourly_mm")
             forecast = row.get("forecast_total_mm")
 
             current_text = (
-                f"{float(current):.1f} mm/hr"
-                if pd.notna(current) else "No current data"
+                f"Peak: {float(peak_hourly):.1f} mm/hr"
+                if pd.notna(peak_hourly)
+                else "Peak unavailable"
             )
             forecast_text = (
                 f"Next {forecast_hours}h: {float(forecast):.1f} mm"
@@ -1192,7 +1193,7 @@ def create_facebook_rainfall_snapshot(
     )
 
     valid_current = rainfall_data.dropna(
-        subset=["current_mmhr"]
+        subset=["max_hourly_mm"]
     ).copy()
 
     valid_forecast = rainfall_data.dropna(
@@ -1201,7 +1202,7 @@ def create_facebook_rainfall_snapshot(
 
     max_current_row = (
         valid_current.sort_values(
-            "current_mmhr",
+            "max_hourly_mm",
             ascending=False,
         ).iloc[0]
         if not valid_current.empty
@@ -1228,9 +1229,9 @@ def create_facebook_rainfall_snapshot(
 
     summary_cards = [
         (
-            "MAX CURRENT RAIN",
+            "MAX PEAK HOURLY RAIN",
             (
-                f"{float(max_current_row['current_mmhr']):.1f} mm/hr"
+                f"{float(max_current_row['max_hourly_mm']):.1f} mm/hr"
                 if max_current_row is not None
                 else "No data"
             ),
@@ -1382,7 +1383,7 @@ def create_facebook_rainfall_snapshot(
             fill=(15, 55, 110),
         )
 
-        current_value = row.get("current_mmhr", 0)
+        current_value = row.get("max_hourly_mm", 0)
 
         draw.text(
             (x + 43, footer_top + 118),
