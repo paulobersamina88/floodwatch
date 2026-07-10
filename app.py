@@ -1,6 +1,8 @@
 import os
 import re
 import time
+import io
+import math
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote_plus
 
@@ -9,6 +11,8 @@ import folium
 import pandas as pd
 import requests
 import streamlit as st
+from PIL import Image, ImageDraw, ImageFont
+from staticmap import StaticMap, CircleMarker
 from streamlit_folium import st_folium
 
 st.set_page_config(page_title="FloodWatch Metro Manila Auto", layout="wide")
@@ -86,11 +90,13 @@ RAIN_STATIONS_NATIONWIDE = {
     "Calapan, Oriental Mindoro": (13.4115, 121.1803),
     "Puerto Princesa, Palawan": (9.7392, 118.7353),
     "Catbalogan, Samar": (11.7753, 124.8861),
-    "Vigan": (17.5747, 120.3869),
-    "Ilagan, Isabela": (17.1485, 121.8892),
-    "San Jose de Buenavista": (10.7489, 121.9410),
-    "San Jose, Occidental Mindoro": (12.3528, 121.0676),
+
+    # Additional requested rainfall points
     "Catarman, Northern Samar": (12.4989, 124.6377),
+    "San Jose de Buenavista, Antique": (10.7489, 121.9410),
+    "San Jose, Occidental Mindoro": (12.3528, 121.0676),
+    "Ilagan, Isabela": (17.1485, 121.8892),
+    "Vigan, Ilocos Sur": (17.5747, 120.3869),
     "Cotabato City": (7.2236, 124.2464),
     "Surigao City": (9.7845, 125.4880),
 }
@@ -106,13 +112,6 @@ FLOOD_PRONE_HINTS = {
     "Las Piñas": "Creek/drainage backflow and localized road flooding",
     "Parañaque": "Creek/drainage and coastal low-lying areas",
     "Muntinlupa": "Laguna Lake/backwater-sensitive areas",
-    "Vigan": "Low-lying urban drainage and river flood-prone areas",
-    "Ilagan, Isabela": "Cagayan River floodplain and drainage-sensitive areas",
-    "San Jose de Buenavista": "Coastal and urban drainage-sensitive areas",
-    "San Jose, Occidental Mindoro": "Coastal and low-lying drainage-sensitive areas",
-    "Catarman, Northern Samar": "Coastal, river, and drainage-sensitive areas",
-    "Cotabato City": "Low-lying floodplain influenced by Rio Grande de Mindanao",
-    "Surigao City": "Coastal, tidal, and drainage-sensitive areas",
 }
 
 LOCATION_GAZETTEER = {
@@ -791,6 +790,293 @@ def fetch_fb_public_page_posts(page_ids, token, limit=10, max_age_hours=24):
     return rows
 
 
+
+def _load_snapshot_font(size, bold=False):
+    """Load a common font available on Streamlit Cloud, with a safe fallback."""
+    candidates = [
+        (
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+            if bold
+            else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+        ),
+        "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf",
+    ]
+    for font_path in candidates:
+        try:
+            return ImageFont.truetype(font_path, size)
+        except Exception:
+            continue
+    return ImageFont.load_default()
+
+
+def _snapshot_risk_rgb(risk):
+    return {
+        "Low": (34, 197, 94),
+        "Moderate": (245, 158, 11),
+        "High": (239, 68, 68),
+        "Critical": (153, 27, 27),
+        "Unknown": (107, 114, 128),
+    }.get(str(risk), (107, 114, 128))
+
+
+def _mercator_pixel(lat, lon, center_lat, center_lon, zoom, width, height):
+    """Convert latitude/longitude to image pixels for a Web Mercator map."""
+    world_size = 256 * (2 ** zoom)
+
+    def lon_to_x(value):
+        return (value + 180.0) / 360.0 * world_size
+
+    def lat_to_y(value):
+        value = max(min(value, 85.05112878), -85.05112878)
+        sin_lat = math.sin(math.radians(value))
+        return (
+            0.5
+            - math.log((1 + sin_lat) / (1 - sin_lat)) / (4 * math.pi)
+        ) * world_size
+
+    center_x = lon_to_x(center_lon)
+    center_y = lat_to_y(center_lat)
+    pixel_x = lon_to_x(lon) - center_x + width / 2
+    pixel_y = lat_to_y(lat) - center_y + height / 2
+    return int(pixel_x), int(pixel_y)
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def create_facebook_rainfall_snapshot(
+    rainfall_records,
+    past_hours,
+    forecast_hours,
+    coverage_name,
+):
+    """
+    Generate a Facebook-ready PNG from the rainfall values already fetched by
+    the application. rainfall_records must be JSON-serializable.
+    """
+    rainfall_data = pd.DataFrame(rainfall_records)
+
+    width = 1200
+    map_height = 830
+    header_height = 190
+    footer_height = 180
+    total_height = header_height + map_height + footer_height
+
+    if coverage_name == "Metro Manila":
+        center_lat, center_lon, zoom = 14.60, 121.02, 11
+    else:
+        center_lat, center_lon, zoom = 12.30, 122.30, 6
+
+    for column in [
+        "lat",
+        "lon",
+        "current_mmhr",
+        "past_total_mm",
+        "forecast_total_mm",
+        "total_window_mm",
+    ]:
+        if column in rainfall_data.columns:
+            rainfall_data[column] = pd.to_numeric(
+                rainfall_data[column],
+                errors="coerce",
+            )
+
+    rainfall_data = rainfall_data.dropna(subset=["lat", "lon"]).copy()
+    if rainfall_data.empty:
+        raise ValueError("No valid rainfall coordinates are available.")
+
+    static_map = StaticMap(
+        width,
+        map_height,
+        url_template="https://a.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    )
+
+    for _, row in rainfall_data.iterrows():
+        marker_color_rgb = _snapshot_risk_rgb(
+            row.get("possible_flood_risk", "Unknown")
+        )
+        marker_hex = "#{:02x}{:02x}{:02x}".format(*marker_color_rgb)
+        static_map.add_marker(
+            CircleMarker(
+                (float(row["lon"]), float(row["lat"])),
+                marker_hex,
+                13,
+            )
+        )
+
+    base_map = static_map.render(
+        zoom=zoom,
+        center=(center_lon, center_lat),
+    ).convert("RGB")
+
+    canvas = Image.new("RGB", (width, total_height), "white")
+    canvas.paste(base_map, (0, header_height))
+    draw = ImageDraw.Draw(canvas)
+
+    title_font = _load_snapshot_font(54, bold=True)
+    subtitle_font = _load_snapshot_font(27)
+    label_font = _load_snapshot_font(22, bold=True)
+    small_font = _load_snapshot_font(18)
+    metric_font = _load_snapshot_font(30, bold=True)
+
+    checked_time = pd.Timestamp.now(tz="Asia/Manila").strftime(
+        "%B %d, %Y • %I:%M %p"
+    )
+
+    draw.rectangle((0, 0, width, header_height), fill=(15, 23, 42))
+    draw.text(
+        (45, 28),
+        f"{coverage_name} Rainfall Snapshot",
+        font=title_font,
+        fill="white",
+    )
+    draw.text(
+        (48, 104),
+        f"Current rainfall and projected accumulation • {checked_time}",
+        font=subtitle_font,
+        fill=(203, 213, 225),
+    )
+    draw.text(
+        (48, 145),
+        f"Past {past_hours}h + next {forecast_hours}h rainfall window",
+        font=small_font,
+        fill=(148, 163, 184),
+    )
+
+    # For nationwide coverage, permanent labels for every city would overlap.
+    # Show detailed labels on the map for Metro Manila and use the ranked summary
+    # below for nationwide coverage.
+    if coverage_name == "Metro Manila":
+        for _, row in rainfall_data.iterrows():
+            pixel_x, pixel_y = _mercator_pixel(
+                float(row["lat"]),
+                float(row["lon"]),
+                center_lat,
+                center_lon,
+                zoom,
+                width,
+                map_height,
+            )
+            pixel_y += header_height
+
+            current_value = row.get("current_mmhr")
+            forecast_value = row.get("forecast_total_mm")
+            risk = row.get("possible_flood_risk", "Unknown")
+
+            current_text = (
+                f"{float(current_value):.1f} mm/hr"
+                if pd.notna(current_value)
+                else "No current data"
+            )
+            forecast_text = (
+                f"Next {forecast_hours}h: {float(forecast_value):.1f} mm"
+                if pd.notna(forecast_value)
+                else "Forecast unavailable"
+            )
+
+            area = str(row.get("area", "Unknown"))
+            outline_color = _snapshot_risk_rgb(risk)
+
+            box_width = 270
+            box_height = 82
+            x1 = max(5, min(pixel_x + 16, width - box_width - 5))
+            y1 = max(
+                header_height + 5,
+                min(
+                    pixel_y - 42,
+                    header_height + map_height - box_height - 5,
+                ),
+            )
+            x2 = x1 + box_width
+            y2 = y1 + box_height
+
+            draw.rounded_rectangle(
+                (x1, y1, x2, y2),
+                radius=14,
+                fill=(255, 255, 255),
+                outline=outline_color,
+                width=5,
+            )
+            draw.text(
+                (x1 + 12, y1 + 8),
+                area,
+                font=label_font,
+                fill=(15, 23, 42),
+            )
+            draw.text(
+                (x1 + 12, y1 + 40),
+                f"{current_text} • {forecast_text}",
+                font=small_font,
+                fill=(51, 65, 85),
+            )
+
+    footer_top = header_height + map_height
+    draw.rectangle(
+        (0, footer_top, width, total_height),
+        fill=(248, 250, 252),
+    )
+
+    valid_forecast = rainfall_data.dropna(
+        subset=["forecast_total_mm"]
+    ).copy()
+    wettest = valid_forecast.sort_values(
+        "forecast_total_mm",
+        ascending=False,
+    ).head(3)
+
+    draw.text(
+        (42, footer_top + 20),
+        "Highest projected rainfall",
+        font=metric_font,
+        fill=(15, 23, 42),
+    )
+
+    x_positions = [42, 410, 778]
+    for x_position, (_, row) in zip(x_positions, wettest.iterrows()):
+        area = str(row["area"])
+        if len(area) > 25:
+            area = area[:22] + "..."
+
+        forecast_value = float(row["forecast_total_mm"])
+        risk = str(row.get("possible_flood_risk", "Unknown"))
+        risk_color_rgb = _snapshot_risk_rgb(risk)
+
+        draw.ellipse(
+            (
+                x_position,
+                footer_top + 75,
+                x_position + 28,
+                footer_top + 103,
+            ),
+            fill=risk_color_rgb,
+        )
+        draw.text(
+            (x_position + 42, footer_top + 67),
+            area,
+            font=label_font,
+            fill=(15, 23, 42),
+        )
+        draw.text(
+            (x_position + 42, footer_top + 105),
+            f"{forecast_value:.1f} mm • {risk}",
+            font=small_font,
+            fill=(71, 85, 105),
+        )
+
+    draw.text(
+        (42, total_height - 30),
+        (
+            "Screening information only • Verify with PAGASA and local "
+            "advisories • © OpenStreetMap contributors"
+        ),
+        font=small_font,
+        fill=(100, 116, 139),
+    )
+
+    image_buffer = io.BytesIO()
+    canvas.save(image_buffer, format="PNG", optimize=True)
+    image_buffer.seek(0)
+    return image_buffer.getvalue()
+
+
 def process_rows(rows):
     if not rows:
         return pd.DataFrame(columns=[
@@ -890,6 +1176,57 @@ if show_rain_layer and not rainfall_df.empty:
     r2.metric("High/Critical current rain", high_rain_count)
     r3.metric("Possible flood-risk points", high_flood_risk_count)
     r4.metric("Max rain window", f"{max_total_rain} mm")
+
+
+if show_rain_layer and not rainfall_df.empty:
+    st.subheader("Facebook-Ready Rainfall Snapshot")
+    st.caption(
+        "Create a shareable image with a location map, current rainfall, "
+        "projected rainfall, risk colors, and simulation time."
+    )
+
+    snapshot_rows = rainfall_df.dropna(
+        subset=["lat", "lon", "forecast_total_mm"]
+    ).copy()
+
+    if snapshot_rows.empty:
+        st.warning(
+            "No valid rainfall values are currently available for the snapshot."
+        )
+    else:
+        try:
+            snapshot_png = create_facebook_rainfall_snapshot(
+                rainfall_records=snapshot_rows.to_dict("records"),
+                past_hours=past_rain_hours,
+                forecast_hours=forecast_rain_hours,
+                coverage_name=rainfall_coverage,
+            )
+
+            st.image(
+                snapshot_png,
+                caption="Shareable rainfall bulletin",
+                use_container_width=True,
+            )
+
+            snapshot_time = pd.Timestamp.now(
+                tz="Asia/Manila"
+            ).strftime("%Y%m%d_%H%M")
+
+            st.download_button(
+                "Download Facebook-ready PNG",
+                data=snapshot_png,
+                file_name=f"rainfall_snapshot_{snapshot_time}.png",
+                mime="image/png",
+                use_container_width=True,
+            )
+        except Exception as snapshot_error:
+            st.error(
+                "The shareable rainfall image could not be generated: "
+                f"{snapshot_error}"
+            )
+            st.caption(
+                "Check that Pillow and staticmap are included in requirements.txt."
+            )
 
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Collected items", len(df))
