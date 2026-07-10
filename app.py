@@ -86,6 +86,13 @@ RAIN_STATIONS_NATIONWIDE = {
     "Calapan, Oriental Mindoro": (13.4115, 121.1803),
     "Puerto Princesa, Palawan": (9.7392, 118.7353),
     "Catbalogan, Samar": (11.7753, 124.8861),
+    "Vigan": (17.5747, 120.3869),
+    "Ilagan, Isabela": (17.1485, 121.8892),
+    "San Jose de Buenavista": (10.7489, 121.9410),
+    "San Jose, Occidental Mindoro": (12.3528, 121.0676),
+    "Catarman, Northern Samar": (12.4989, 124.6377),
+    "Cotabato City": (7.2236, 124.2464),
+    "Surigao City": (9.7845, 125.4880),
 }
 
 FLOOD_PRONE_HINTS = {
@@ -99,6 +106,13 @@ FLOOD_PRONE_HINTS = {
     "Las Piñas": "Creek/drainage backflow and localized road flooding",
     "Parañaque": "Creek/drainage and coastal low-lying areas",
     "Muntinlupa": "Laguna Lake/backwater-sensitive areas",
+    "Vigan": "Low-lying urban drainage and river flood-prone areas",
+    "Ilagan, Isabela": "Cagayan River floodplain and drainage-sensitive areas",
+    "San Jose de Buenavista": "Coastal and urban drainage-sensitive areas",
+    "San Jose, Occidental Mindoro": "Coastal and low-lying drainage-sensitive areas",
+    "Catarman, Northern Samar": "Coastal, river, and drainage-sensitive areas",
+    "Cotabato City": "Low-lying floodplain influenced by Rio Grande de Mindanao",
+    "Surigao City": "Coastal, tidal, and drainage-sensitive areas",
 }
 
 LOCATION_GAZETTEER = {
