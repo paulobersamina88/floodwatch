@@ -81,24 +81,6 @@ RAIN_STATIONS_NATIONWIDE = {
     "Davao City": (7.1907, 125.4553),
     "General Santos": (6.1164, 125.1716),
     "Zamboanga City": (6.9214, 122.0790),
-
-    # -------- New additions --------
-
-    # Nueva Ecija
-    "Cabanatuan": (15.4859, 120.9665),
-    "Palayan City": (15.5415, 121.0848),
-
-    # Palawan
-    "Puerto Princesa": (9.7392, 118.7353),
-
-    # Mindoro
-    "Calapan": (13.4115, 121.1803),          # Oriental Mindoro
-    "San Jose, Occidental Mindoro": (12.3528, 121.0676),
-
-    # Samar
-    "Catbalogan": (11.7753, 124.8861),       # Samar
-    "Borongan": (11.6089, 125.4317),         # Eastern Samar
-    "Catarman": (12.4989, 124.6377),         # Northern Samar
 }
 
 LOCATION_GAZETTEER = {
