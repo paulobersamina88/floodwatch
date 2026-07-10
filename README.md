@@ -38,7 +38,7 @@ You may also set your token as an environment variable:
 
 ```bash
 set FB_ACCESS_TOKEN=your_token_here
-streamlit run app.py
+streamlit run app4.py
 ```
 
 ## Recommended public sources
