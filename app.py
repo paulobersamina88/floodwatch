@@ -1045,7 +1045,7 @@ def create_facebook_rainfall_snapshot(
             )
 
             current_text = (
-                f"{float(current):.1f} mm/hr"
+                f"{float(peak_hourly):.1f} mm/hr"
                 if pd.notna(peak_hourly)
                 else "No data"
             )
