@@ -848,16 +848,12 @@ def create_facebook_rainfall_snapshot(
     forecast_hours,
     coverage_name,
 ):
-    """
-    Generate a Facebook-ready PNG from the rainfall values already fetched by
-    the application. rainfall_records must be JSON-serializable.
-    """
     rainfall_data = pd.DataFrame(rainfall_records)
 
     width = 1200
-    map_height = 830
-    header_height = 190
-    footer_height = 180
+    map_height = 720
+    header_height = 115
+    footer_height = 250
     total_height = header_height + map_height + footer_height
 
     if coverage_name == "Metro Manila":
@@ -879,7 +875,10 @@ def create_facebook_rainfall_snapshot(
                 errors="coerce",
             )
 
-    rainfall_data = rainfall_data.dropna(subset=["lat", "lon"]).copy()
+    rainfall_data = rainfall_data.dropna(
+        subset=["lat", "lon"]
+    ).copy()
+
     if rainfall_data.empty:
         raise ValueError("No valid rainfall coordinates are available.")
 
@@ -890,15 +889,16 @@ def create_facebook_rainfall_snapshot(
     )
 
     for _, row in rainfall_data.iterrows():
-        marker_color_rgb = _snapshot_risk_rgb(
+        marker_rgb = _snapshot_risk_rgb(
             row.get("possible_flood_risk", "Unknown")
         )
-        marker_hex = "#{:02x}{:02x}{:02x}".format(*marker_color_rgb)
+        marker_hex = "#{:02x}{:02x}{:02x}".format(*marker_rgb)
+
         static_map.add_marker(
             CircleMarker(
                 (float(row["lon"]), float(row["lat"])),
                 marker_hex,
-                13,
+                8,
             )
         )
 
@@ -907,173 +907,388 @@ def create_facebook_rainfall_snapshot(
         center=(center_lon, center_lat),
     ).convert("RGB")
 
-    canvas = Image.new("RGB", (width, total_height), "white")
+    canvas = Image.new(
+        "RGB",
+        (width, total_height),
+        "white",
+    )
     canvas.paste(base_map, (0, header_height))
+
     draw = ImageDraw.Draw(canvas)
 
-    title_font = _load_snapshot_font(54, bold=True)
-    subtitle_font = _load_snapshot_font(27)
-    label_font = _load_snapshot_font(22, bold=True)
-    small_font = _load_snapshot_font(18)
-    metric_font = _load_snapshot_font(30, bold=True)
+    title_font = _load_snapshot_font(31, bold=True)
+    subtitle_font = _load_snapshot_font(16)
+    city_font = _load_snapshot_font(14, bold=True)
+    value_font = _load_snapshot_font(12)
+    section_font = _load_snapshot_font(17, bold=True)
+    metric_font = _load_snapshot_font(24, bold=True)
+    tiny_font = _load_snapshot_font(11)
 
-    checked_time = pd.Timestamp.now(tz="Asia/Manila").strftime(
-        "%B %d, %Y • %I:%M %p"
+    checked_time = pd.Timestamp.now(
+        tz="Asia/Manila"
+    ).strftime("%b %d, %Y • %I:%M %p")
+
+    # Header
+    draw.rectangle(
+        (0, 0, width, header_height),
+        fill=(239, 246, 255),
     )
 
-    draw.rectangle((0, 0, width, header_height), fill=(15, 23, 42))
     draw.text(
-        (45, 28),
-        f"{coverage_name} Rainfall Snapshot",
+        (24, 18),
+        f"{coverage_name.upper()} RAINFALL SNAPSHOT",
         font=title_font,
-        fill="white",
+        fill=(15, 55, 110),
     )
+
     draw.text(
-        (48, 104),
-        f"Current rainfall and projected accumulation • {checked_time}",
+        (26, 62),
+        "Real-time simulation using Open-Meteo",
         font=subtitle_font,
-        fill=(203, 213, 225),
+        fill=(51, 65, 85),
     )
+
     draw.text(
-        (48, 145),
-        f"Past {past_hours}h + next {forecast_hours}h rainfall window",
-        font=small_font,
-        fill=(148, 163, 184),
+        (875, 20),
+        checked_time,
+        font=subtitle_font,
+        fill=(15, 55, 110),
     )
 
-    # For nationwide coverage, permanent labels for every city would overlap.
-    # Show detailed labels on the map for Metro Manila and use the ranked summary
-    # below for nationwide coverage.
+    draw.text(
+        (955, 55),
+        f"Past {past_hours}h  •  Next {forecast_hours}h",
+        font=subtitle_font,
+        fill=(51, 65, 85),
+    )
+
+    # Fixed positions to prevent overlapping labels
+    metro_positions = {
+        "Caloocan": (420, 35),
+        "Valenzuela": (420, 105),
+        "Malabon": (240, 150),
+        "Navotas": (240, 220),
+        "Quezon City": (610, 180),
+        "Marikina": (820, 210),
+        "Manila": (420, 285),
+        "San Juan": (590, 305),
+        "Makati": (420, 380),
+        "Mandaluyong": (600, 385),
+        "Pasig": (790, 390),
+        "Pasay": (330, 480),
+        "Pateros": (570, 480),
+        "Parañaque": (370, 570),
+        "Taguig": (680, 565),
+        "Las Piñas": (360, 640),
+        "Muntinlupa": (610, 650),
+    }
+
     if coverage_name == "Metro Manila":
+        box_width = 150
+        box_height = 54
+
         for _, row in rainfall_data.iterrows():
-            pixel_x, pixel_y = _mercator_pixel(
-                float(row["lat"]),
-                float(row["lon"]),
-                center_lat,
-                center_lon,
-                zoom,
-                width,
-                map_height,
-            )
-            pixel_y += header_height
-
-            current_value = row.get("current_mmhr")
-            forecast_value = row.get("forecast_total_mm")
-            risk = row.get("possible_flood_risk", "Unknown")
-
-            current_text = (
-                f"{float(current_value):.1f} mm/hr"
-                if pd.notna(current_value)
-                else "No current data"
-            )
-            forecast_text = (
-                f"Next {forecast_hours}h: {float(forecast_value):.1f} mm"
-                if pd.notna(forecast_value)
-                else "Forecast unavailable"
-            )
-
             area = str(row.get("area", "Unknown"))
-            outline_color = _snapshot_risk_rgb(risk)
 
-            box_width = 270
-            box_height = 82
-            x1 = max(5, min(pixel_x + 16, width - box_width - 5))
-            y1 = max(
-                header_height + 5,
-                min(
-                    pixel_y - 42,
-                    header_height + map_height - box_height - 5,
-                ),
-            )
+            if area not in metro_positions:
+                continue
+
+            x1, local_y = metro_positions[area]
+            y1 = header_height + local_y
             x2 = x1 + box_width
             y2 = y1 + box_height
 
+            current = row.get("current_mmhr")
+            forecast = row.get("forecast_total_mm")
+            risk = row.get(
+                "possible_flood_risk",
+                "Unknown",
+            )
+
+            current_text = (
+                f"{float(current):.1f} mm/hr"
+                if pd.notna(current)
+                else "No data"
+            )
+
+            forecast_text = (
+                f"Next {forecast_hours}h: "
+                f"{float(forecast):.1f} mm"
+                if pd.notna(forecast)
+                else "Forecast unavailable"
+            )
+
+            outline = _snapshot_risk_rgb(risk)
+
             draw.rounded_rectangle(
                 (x1, y1, x2, y2),
-                radius=14,
+                radius=9,
                 fill=(255, 255, 255),
-                outline=outline_color,
-                width=5,
+                outline=outline,
+                width=3,
             )
+
+            draw.ellipse(
+                (
+                    x1 + 8,
+                    y1 + 11,
+                    x1 + 24,
+                    y1 + 27,
+                ),
+                fill=outline,
+            )
+
             draw.text(
-                (x1 + 12, y1 + 8),
+                (x1 + 31, y1 + 6),
                 area,
-                font=label_font,
+                font=city_font,
                 fill=(15, 23, 42),
             )
+
             draw.text(
-                (x1 + 12, y1 + 40),
-                f"{current_text} • {forecast_text}",
-                font=small_font,
+                (x1 + 31, y1 + 26),
+                current_text,
+                font=value_font,
                 fill=(51, 65, 85),
             )
 
+            draw.text(
+                (x1 + 31, y1 + 40),
+                forecast_text,
+                font=tiny_font,
+                fill=(71, 85, 105),
+            )
+
+    # Footer
     footer_top = header_height + map_height
+
     draw.rectangle(
         (0, footer_top, width, total_height),
         fill=(248, 250, 252),
     )
 
+    valid_current = rainfall_data.dropna(
+        subset=["current_mmhr"]
+    ).copy()
+
     valid_forecast = rainfall_data.dropna(
         subset=["forecast_total_mm"]
     ).copy()
-    wettest = valid_forecast.sort_values(
+
+    max_current_row = (
+        valid_current.sort_values(
+            "current_mmhr",
+            ascending=False,
+        ).iloc[0]
+        if not valid_current.empty
+        else None
+    )
+
+    max_forecast_row = (
+        valid_forecast.sort_values(
+            "forecast_total_mm",
+            ascending=False,
+        ).iloc[0]
+        if not valid_forecast.empty
+        else None
+    )
+
+    monitoring_points = len(valid_forecast)
+
+    draw.text(
+        (18, footer_top + 16),
+        f"SUMMARY ({coverage_name.upper()})",
+        font=section_font,
+        fill=(15, 55, 110),
+    )
+
+    summary_cards = [
+        (
+            "MAX CURRENT RAIN",
+            (
+                f"{float(max_current_row['current_mmhr']):.1f} mm/hr"
+                if max_current_row is not None
+                else "No data"
+            ),
+            (
+                str(max_current_row["area"])
+                if max_current_row is not None
+                else ""
+            ),
+        ),
+        (
+            f"MAX PROJ. (NEXT {forecast_hours}H)",
+            (
+                f"{float(max_forecast_row['forecast_total_mm']):.1f} mm"
+                if max_forecast_row is not None
+                else "No data"
+            ),
+            (
+                str(max_forecast_row["area"])
+                if max_forecast_row is not None
+                else ""
+            ),
+        ),
+        (
+            "MONITORING POINTS",
+            str(monitoring_points),
+            "With Data",
+        ),
+        (
+            "SIMULATION TIME",
+            pd.Timestamp.now(
+                tz="Asia/Manila"
+            ).strftime("%I:%M %p"),
+            pd.Timestamp.now(
+                tz="Asia/Manila"
+            ).strftime("%b %d, %Y"),
+        ),
+    ]
+
+    card_positions = [18, 178, 338, 498]
+
+    for x, (label, value, detail) in zip(
+        card_positions,
+        summary_cards,
+    ):
+        draw.rounded_rectangle(
+            (
+                x,
+                footer_top + 48,
+                x + 145,
+                footer_top + 145,
+            ),
+            radius=10,
+            fill=(255, 255, 255),
+            outline=(226, 232, 240),
+            width=2,
+        )
+
+        draw.text(
+            (x + 10, footer_top + 62),
+            value,
+            font=metric_font,
+            fill=(15, 55, 110),
+        )
+
+        draw.text(
+            (x + 10, footer_top + 96),
+            label,
+            font=tiny_font,
+            fill=(71, 85, 105),
+        )
+
+        draw.text(
+            (x + 10, footer_top + 116),
+            detail[:20],
+            font=tiny_font,
+            fill=(100, 116, 139),
+        )
+
+    draw.text(
+        (690, footer_top + 16),
+        (
+            "TOP 3 HIGHEST PROJECTED RAINFALL "
+            f"(NEXT {forecast_hours}H)"
+        ),
+        font=section_font,
+        fill=(15, 55, 110),
+    )
+
+    top_three = valid_forecast.sort_values(
         "forecast_total_mm",
         ascending=False,
     ).head(3)
 
-    draw.text(
-        (42, footer_top + 20),
-        "Highest projected rainfall",
-        font=metric_font,
-        fill=(15, 23, 42),
-    )
+    top_positions = [690, 855, 1020]
 
-    x_positions = [42, 410, 778]
-    for x_position, (_, row) in zip(x_positions, wettest.iterrows()):
-        area = str(row["area"])
-        if len(area) > 25:
-            area = area[:22] + "..."
+    for rank, (x, (_, row)) in enumerate(
+        zip(top_positions, top_three.iterrows()),
+        start=1,
+    ):
+        risk = str(
+            row.get(
+                "possible_flood_risk",
+                "Unknown",
+            )
+        )
+        risk_rgb = _snapshot_risk_rgb(risk)
 
-        forecast_value = float(row["forecast_total_mm"])
-        risk = str(row.get("possible_flood_risk", "Unknown"))
-        risk_color_rgb = _snapshot_risk_rgb(risk)
+        draw.rounded_rectangle(
+            (
+                x,
+                footer_top + 48,
+                x + 150,
+                footer_top + 145,
+            ),
+            radius=10,
+            fill=(255, 255, 255),
+            outline=(226, 232, 240),
+            width=2,
+        )
 
         draw.ellipse(
             (
-                x_position,
-                footer_top + 75,
-                x_position + 28,
-                footer_top + 103,
+                x + 10,
+                footer_top + 60,
+                x + 34,
+                footer_top + 84,
             ),
-            fill=risk_color_rgb,
+            fill=risk_rgb,
         )
+
         draw.text(
-            (x_position + 42, footer_top + 67),
-            area,
-            font=label_font,
+            (x + 17, footer_top + 61),
+            str(rank),
+            font=city_font,
+            fill="white",
+        )
+
+        draw.text(
+            (x + 43, footer_top + 60),
+            str(row["area"])[:17],
+            font=city_font,
             fill=(15, 23, 42),
         )
+
         draw.text(
-            (x_position + 42, footer_top + 105),
-            f"{forecast_value:.1f} mm • {risk}",
-            font=small_font,
+            (x + 43, footer_top + 88),
+            f"{float(row['forecast_total_mm']):.1f} mm",
+            font=metric_font,
+            fill=(15, 55, 110),
+        )
+
+        current_value = row.get("current_mmhr", 0)
+
+        draw.text(
+            (x + 43, footer_top + 118),
+            (
+                f"{float(current_value or 0):.1f} mm/hr"
+            ),
+            font=tiny_font,
             fill=(71, 85, 105),
         )
 
     draw.text(
-        (42, total_height - 30),
+        (18, total_height - 28),
         (
-            "Screening information only • Verify with PAGASA and local "
-            "advisories • © OpenStreetMap contributors"
+            "Screening information only • Verify with PAGASA "
+            "and local advisories • © OpenStreetMap contributors"
         ),
-        font=small_font,
+        font=tiny_font,
         fill=(100, 116, 139),
     )
 
     image_buffer = io.BytesIO()
-    canvas.save(image_buffer, format="PNG", optimize=True)
+
+    canvas.save(
+        image_buffer,
+        format="PNG",
+        optimize=True,
+    )
+
     image_buffer.seek(0)
+
     return image_buffer.getvalue()
 
 
