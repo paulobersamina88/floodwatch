@@ -80,6 +80,12 @@ RAIN_STATIONS_NATIONWIDE = {
     "Davao City": (7.1907, 125.4553),
     "General Santos": (6.1164, 125.1716),
     "Zamboanga City": (6.9214, 122.0790),
+
+    # Added representative rainfall points
+    "Cabanatuan, Nueva Ecija": (15.4859, 120.9665),
+    "Calapan, Oriental Mindoro": (13.4115, 121.1803),
+    "Puerto Princesa, Palawan": (9.7392, 118.7353),
+    "Catbalogan, Samar": (11.7753, 124.8861),
 }
 
 FLOOD_PRONE_HINTS = {
@@ -832,6 +838,10 @@ with st.sidebar:
 
     refresh = st.button("Refresh now")
 
+if refresh:
+    st.cache_data.clear()
+    st.rerun()
+
 rows = []
 
 if use_news:
@@ -856,7 +866,11 @@ st.success(f"Showing latest reports only: last {max_age_hours} hour(s). Cache re
 if show_rain_layer and not rainfall_df.empty:
     high_rain_count = int(rainfall_df["rain_level"].isin(["High", "Critical"]).sum())
     high_flood_risk_count = int(rainfall_df["possible_flood_risk"].isin(["High", "Critical"]).sum())
-    max_total_rain = round(float(rainfall_df["total_window_mm"].max()), 1) if "total_window_mm" in rainfall_df else 0
+    valid_total_rain = pd.to_numeric(
+        rainfall_df.get("total_window_mm", pd.Series(dtype=float)),
+        errors="coerce"
+    ).dropna()
+    max_total_rain = round(float(valid_total_rain.max()), 1) if not valid_total_rain.empty else 0.0
     r1, r2, r3, r4 = st.columns(4)
     r1.metric("Rainfall points", len(rainfall_df))
     r2.metric("High/Critical current rain", high_rain_count)
