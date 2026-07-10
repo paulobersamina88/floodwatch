@@ -63,7 +63,6 @@ RAIN_STATIONS_METRO_MANILA = {
 
 RAIN_STATIONS_NATIONWIDE = {
     **RAIN_STATIONS_METRO_MANILA,
-
     "Baguio": (16.4023, 120.5960),
     "Tuguegarao": (17.6132, 121.7270),
     "Dagupan": (16.0430, 120.3333),
@@ -81,6 +80,19 @@ RAIN_STATIONS_NATIONWIDE = {
     "Davao City": (7.1907, 125.4553),
     "General Santos": (6.1164, 125.1716),
     "Zamboanga City": (6.9214, 122.0790),
+}
+
+FLOOD_PRONE_HINTS = {
+    "Manila": "Low-lying roads, old drainage, estero/backwater effects",
+    "Quezon City": "Localized ponding along major roads and low-lying barangays",
+    "Marikina": "River overflow/backwater-sensitive areas",
+    "Pasig": "Pasig River/creek backwater-sensitive areas",
+    "Malabon": "Very low elevation, tidal/backwater-sensitive areas",
+    "Navotas": "Coastal/tidal and low-lying flood-prone areas",
+    "Valenzuela": "Low-lying and river/creek-adjacent communities",
+    "Las Piñas": "Creek/drainage backflow and localized road flooding",
+    "Parañaque": "Creek/drainage and coastal low-lying areas",
+    "Muntinlupa": "Laguna Lake/backwater-sensitive areas",
 }
 
 LOCATION_GAZETTEER = {
