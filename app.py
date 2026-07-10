@@ -101,6 +101,43 @@ RAIN_STATIONS_NATIONWIDE = {
     "Surigao City": (9.7845, 125.4880),
 }
 
+
+SNAPSHOT_REGIONS = {
+    "Metro Manila": [
+        "Manila", "Quezon City", "Marikina", "Pasig", "Makati",
+        "Mandaluyong", "San Juan", "Caloocan", "Malabon", "Navotas",
+        "Valenzuela", "Pasay", "Parañaque", "Las Piñas", "Muntinlupa",
+        "Taguig", "Pateros",
+    ],
+    "North Luzon": [
+        "Baguio", "Tuguegarao", "Dagupan", "Vigan, Ilocos Sur",
+        "Ilagan, Isabela", "Cabanatuan, Nueva Ecija",
+        "San Fernando Pampanga", "Olongapo",
+    ],
+    "South Luzon": [
+        "Calamba Laguna", "Batangas City", "Naga", "Legazpi",
+        "Calapan, Oriental Mindoro", "San Jose, Occidental Mindoro",
+        "Puerto Princesa, Palawan",
+    ],
+    "Visayas": [
+        "Iloilo City", "Bacolod", "Cebu City", "Tacloban",
+        "Catbalogan, Samar", "Catarman, Northern Samar",
+        "San Jose de Buenavista, Antique",
+    ],
+    "Mindanao": [
+        "Cagayan de Oro", "Davao City", "General Santos",
+        "Zamboanga City", "Cotabato City", "Surigao City",
+    ],
+}
+
+SNAPSHOT_MAP_SETTINGS = {
+    "Metro Manila": {"center": (14.60, 121.02), "zoom": 11},
+    "North Luzon": {"center": (16.35, 121.00), "zoom": 7},
+    "South Luzon": {"center": (12.90, 121.40), "zoom": 7},
+    "Visayas": {"center": (11.10, 123.40), "zoom": 7},
+    "Mindanao": {"center": (7.60, 124.60), "zoom": 7},
+}
+
 FLOOD_PRONE_HINTS = {
     "Manila": "Low-lying roads, old drainage, estero/backwater effects",
     "Quezon City": "Localized ponding along major roads and low-lying barangays",
@@ -856,10 +893,12 @@ def create_facebook_rainfall_snapshot(
     footer_height = 250
     total_height = header_height + map_height + footer_height
 
-    if coverage_name == "Metro Manila":
-        center_lat, center_lon, zoom = 14.60, 121.02, 11
-    else:
-        center_lat, center_lon, zoom = 12.30, 122.30, 6
+    map_settings = SNAPSHOT_MAP_SETTINGS.get(
+        coverage_name,
+        SNAPSHOT_MAP_SETTINGS["Metro Manila"],
+    )
+    center_lat, center_lon = map_settings["center"]
+    zoom = map_settings["zoom"]
 
     for column in [
         "lat",
@@ -1058,6 +1097,91 @@ def create_facebook_rainfall_snapshot(
                 font=tiny_font,
                 fill=(71, 85, 105),
             )
+
+    if coverage_name != "Metro Manila":
+        # Non-Metro snapshots use a clean ranked panel on the left side
+        # so labels remain readable and do not overlap the regional map.
+        ordered_data = rainfall_data.sort_values(
+            "forecast_total_mm",
+            ascending=False,
+            na_position="last",
+        ).reset_index(drop=True)
+
+        panel_x1 = 18
+        panel_y1 = header_height + 20
+        panel_x2 = 390
+        panel_y2 = header_height + map_height - 20
+
+        draw.rounded_rectangle(
+            (panel_x1, panel_y1, panel_x2, panel_y2),
+            radius=16,
+            fill=(255, 255, 255),
+            outline=(203, 213, 225),
+            width=2,
+        )
+
+        draw.text(
+            (panel_x1 + 18, panel_y1 + 14),
+            f"{coverage_name} rainfall points",
+            font=section_font,
+            fill=(15, 55, 110),
+        )
+
+        card_w = 338
+        card_h = 72
+        gap = 10
+        start_y = panel_y1 + 52
+
+        for idx, row in ordered_data.head(8).iterrows():
+            x1 = panel_x1 + 16
+            y1 = start_y + idx * (card_h + gap)
+            x2 = x1 + card_w
+            y2 = y1 + card_h
+
+            risk = row.get("possible_flood_risk", "Unknown")
+            outline = _snapshot_risk_rgb(risk)
+            current = row.get("current_mmhr")
+            forecast = row.get("forecast_total_mm")
+
+            current_text = (
+                f"{float(current):.1f} mm/hr"
+                if pd.notna(current) else "No current data"
+            )
+            forecast_text = (
+                f"Next {forecast_hours}h: {float(forecast):.1f} mm"
+                if pd.notna(forecast) else "No forecast"
+            )
+
+            draw.rounded_rectangle(
+                (x1, y1, x2, y2),
+                radius=10,
+                fill=(248, 250, 252),
+                outline=outline,
+                width=3,
+            )
+            draw.ellipse(
+                (x1 + 12, y1 + 16, x1 + 34, y1 + 38),
+                fill=outline,
+            )
+            draw.text(
+                (x1 + 46, y1 + 10),
+                str(row.get("area", "Unknown"))[:30],
+                font=city_font,
+                fill=(15, 23, 42),
+            )
+            draw.text(
+                (x1 + 46, y1 + 34),
+                current_text,
+                font=value_font,
+                fill=(51, 65, 85),
+            )
+            draw.text(
+                (x1 + 180, y1 + 34),
+                forecast_text,
+                font=value_font,
+                fill=(71, 85, 105),
+            )
+
 
     # Footer
     footer_top = header_height + map_height
@@ -1396,11 +1520,30 @@ if show_rain_layer and not rainfall_df.empty:
 if show_rain_layer and not rainfall_df.empty:
     st.subheader("Facebook-Ready Rainfall Snapshot")
     st.caption(
-        "Create a shareable image with a location map, current rainfall, "
+        "Create a shareable image with a regional map, current rainfall, "
         "projected rainfall, risk colors, and simulation time."
     )
 
-    snapshot_rows = rainfall_df.dropna(
+    available_snapshot_regions = ["Metro Manila"]
+    if rainfall_coverage == "Nationwide key cities":
+        available_snapshot_regions = [
+            "Metro Manila",
+            "North Luzon",
+            "South Luzon",
+            "Visayas",
+            "Mindanao",
+        ]
+
+    snapshot_region = st.selectbox(
+        "Snapshot region",
+        available_snapshot_regions,
+        index=0,
+        key="snapshot_region_selector",
+    )
+
+    snapshot_rows = rainfall_df[
+        rainfall_df["area"].isin(SNAPSHOT_REGIONS[snapshot_region])
+    ].dropna(
         subset=["lat", "lon", "forecast_total_mm"]
     ).copy()
 
@@ -1414,7 +1557,7 @@ if show_rain_layer and not rainfall_df.empty:
                 rainfall_records=snapshot_rows.to_dict("records"),
                 past_hours=past_rain_hours,
                 forecast_hours=forecast_rain_hours,
-                coverage_name=rainfall_coverage,
+                coverage_name=snapshot_region,
             )
 
             st.image(
@@ -1430,7 +1573,7 @@ if show_rain_layer and not rainfall_df.empty:
             st.download_button(
                 "Download Facebook-ready PNG",
                 data=snapshot_png,
-                file_name=f"rainfall_snapshot_{snapshot_time}.png",
+                file_name=f"{snapshot_region.lower().replace(' ', '_')}_rainfall_snapshot_{snapshot_time}.png",
                 mime="image/png",
                 use_container_width=True,
             )
