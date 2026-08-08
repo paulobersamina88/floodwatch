@@ -33,6 +33,19 @@ DEFAULT_QUERIES = [
     "Valenzuela baha today",
     "Navotas baha today",
     "Pasig flood today",
+
+    # Additional requested locations
+    "Cavite flood today",
+    "Tagaytay flood today",
+    "San Pablo Laguna flood today",
+    "Infanta Quezon flood today",
+    "Tagkawayan Quezon flood today",
+    "Mamburao Occidental Mindoro flood today",
+    "Romblon flood today",
+    "Masbate flood today",
+    "Roxas City Capiz flood today",
+    "Bohol flood today",
+    "Butuan flood today",
 ]
 
 # Optional: Add FB public Page IDs/usernames here.
@@ -99,6 +112,19 @@ RAIN_STATIONS_NATIONWIDE = {
     "Vigan, Ilocos Sur": (17.5747, 120.3869),
     "Cotabato City": (7.2236, 124.2464),
     "Surigao City": (9.7845, 125.4880),
+
+    # Additional requested nationwide rainfall points
+    "Cavite City": (14.4815, 120.9015),
+    "Tagaytay": (14.0953, 120.9336),
+    "San Pablo, Laguna": (14.0667, 121.3167),
+    "Infanta, Quezon": (14.7425, 121.6494),
+    "Tagkawayan, Quezon": (13.9662, 122.5379),
+    "Mamburao, Occidental Mindoro": (13.2248, 120.5929),
+    "Romblon, Romblon": (12.5771, 122.2694),
+    "Masbate City": (12.3711, 123.6239),
+    "Roxas City, Capiz": (11.5853, 122.7511),
+    "Tagbilaran, Bohol": (9.6729, 123.8730),
+    "Butuan City": (8.9475, 125.5406),
 }
 
 
@@ -118,15 +144,20 @@ SNAPSHOT_REGIONS = {
         "Calamba Laguna", "Batangas City", "Naga", "Legazpi",
         "Calapan, Oriental Mindoro", "San Jose, Occidental Mindoro",
         "Puerto Princesa, Palawan",
+        "Cavite City", "Tagaytay", "San Pablo, Laguna",
+        "Infanta, Quezon", "Tagkawayan, Quezon",
+        "Mamburao, Occidental Mindoro", "Romblon, Romblon",
     ],
     "Visayas": [
         "Iloilo City", "Bacolod", "Cebu City", "Tacloban",
         "Catbalogan, Samar", "Catarman, Northern Samar",
         "San Jose de Buenavista, Antique",
+        "Masbate City", "Roxas City, Capiz", "Tagbilaran, Bohol",
     ],
     "Mindanao": [
         "Cagayan de Oro", "Davao City", "General Santos",
         "Zamboanga City", "Cotabato City", "Surigao City",
+        "Butuan City",
     ],
 }
 
@@ -152,6 +183,23 @@ FLOOD_PRONE_HINTS = {
 }
 
 LOCATION_GAZETTEER = {
+    # Additional requested locations (specific names first)
+    "tagaytay": (14.0953, 120.9336),
+    "cavite city": (14.4815, 120.9015),
+    "san pablo": (14.0667, 121.3167),
+    "infanta, quezon": (14.7425, 121.6494),
+    "infanta quezon": (14.7425, 121.6494),
+    "tagkawayan, quezon": (13.9662, 122.5379),
+    "tagkawayan quezon": (13.9662, 122.5379),
+    "mamburao": (13.2248, 120.5929),
+    "romblon": (12.5771, 122.2694),
+    "masbate": (12.3711, 123.6239),
+    "roxas city": (11.5853, 122.7511),
+    "tagbilaran": (9.6729, 123.8730),
+    "bohol": (9.6729, 123.8730),
+    "butuan": (8.9475, 125.5406),
+    "cavite": (14.4815, 120.9015),
+
     "españa": (14.6091, 120.9897),
     "ust": (14.6099, 120.9896),
     "taft": (14.5749, 120.9850),
