@@ -58,6 +58,8 @@ DEFAULT_QUERIES = [
     "Casiguran Aurora flood today",
     "Negros Oriental flood today",
     "Casandig Samar flood today",
+    "Tanay Rizal flood today",
+    "San Jose Antipolo flood today",
 ]
 
 # Optional: Add FB public Page IDs/usernames here.
@@ -90,6 +92,15 @@ RAIN_STATIONS_METRO_MANILA = {
     "Pateros": (14.5448, 121.0672),
 }
 
+# Dedicated Marikina screening view: Marikina plus eastern Rizal rainfall-context points.
+# Tanay and San Jose, Antipolo are Open-Meteo point forecasts, not official PAGASA gauges.
+# Use them as rainfall context together with actual Marikina River levels and official basin gauges.
+RAIN_STATIONS_MARIKINA_UPSTREAM = {
+    "Marikina": (14.6507, 121.1029),
+    "San Jose, Antipolo": (14.61944, 121.28194),
+    "Tanay, Rizal": (14.4985, 121.2856),
+}
+
 # Dedicated points requested for direct rainfall forecasting and map visualization.
 # Negros Oriental is represented by Dumaguete City because Open-Meteo requires a point coordinate.
 RAIN_STATIONS_REQUESTED = {
@@ -99,6 +110,8 @@ RAIN_STATIONS_REQUESTED = {
     "Dasmariñas, Cavite": (14.3270, 120.9370),
     "Victoria, Laguna": (14.2316, 121.3278),
     "Morong, Rizal": (14.5151, 121.2380),
+    "San Jose, Antipolo": (14.61944, 121.28194),
+    "Tanay, Rizal": (14.4985, 121.2856),
     "Iba, Zambales": (15.3264, 119.9786),
     "Casiguran, Aurora": (16.2041, 122.0400),
     "Dumaguete City, Negros Oriental": (9.3054, 123.3080),
@@ -158,6 +171,9 @@ RAIN_STATIONS_NATIONWIDE = {
 
 
 SNAPSHOT_REGIONS = {
+    "Marikina + Rizal Rain Watch": [
+        "Marikina", "San Jose, Antipolo", "Tanay, Rizal",
+    ],
     "Metro Manila": [
         "Manila", "Quezon City", "Marikina", "Pasig", "Makati",
         "Mandaluyong", "San Juan", "Caloocan", "Malabon", "Navotas",
@@ -179,6 +195,7 @@ SNAPSHOT_REGIONS = {
         "Mamburao, Occidental Mindoro", "Romblon, Romblon",
         "Imus, Cavite", "Bacoor, Cavite", "Noveleta, Cavite",
         "Dasmariñas, Cavite", "Victoria, Laguna", "Morong, Rizal",
+        "San Jose, Antipolo", "Tanay, Rizal",
     ],
     "Visayas": [
         "Iloilo City", "Bacolod", "Cebu City", "Tacloban",
@@ -195,6 +212,7 @@ SNAPSHOT_REGIONS = {
 }
 
 SNAPSHOT_MAP_SETTINGS = {
+    "Marikina + Rizal Rain Watch": {"center": (14.59, 121.20), "zoom": 10},
     "Metro Manila": {"center": (14.60, 121.02), "zoom": 11},
     "North Luzon": {"center": (16.35, 121.00), "zoom": 7},
     "South Luzon": {"center": (12.90, 121.40), "zoom": 7},
@@ -202,10 +220,17 @@ SNAPSHOT_MAP_SETTINGS = {
     "Mindanao": {"center": (7.60, 124.60), "zoom": 7},
 }
 
+FLOOD_PRONE_BONUS_AREAS = {
+    "Manila", "Quezon City", "Marikina", "Pasig", "Malabon",
+    "Navotas", "Valenzuela", "Las Piñas", "Parañaque", "Muntinlupa",
+}
+
 FLOOD_PRONE_HINTS = {
     "Manila": "Low-lying roads, old drainage, estero/backwater effects",
     "Quezon City": "Localized ponding along major roads and low-lying barangays",
     "Marikina": "River overflow/backwater-sensitive areas",
+    "San Jose, Antipolo": "Eastern Rizal rainfall context for Marikina screening; not an official river gauge",
+    "Tanay, Rizal": "Eastern Rizal rainfall context for Marikina screening; verify basin relevance with official PAGASA gauges",
     "Pasig": "Pasig River/creek backwater-sensitive areas",
     "Malabon": "Very low elevation, tidal/backwater-sensitive areas",
     "Navotas": "Coastal/tidal and low-lying flood-prone areas",
@@ -216,6 +241,13 @@ FLOOD_PRONE_HINTS = {
 }
 
 LOCATION_GAZETTEER = {
+    # Marikina / eastern Rizal rainfall-context locations (specific names first)
+    "san jose, antipolo": (14.61944, 121.28194),
+    "san jose antipolo": (14.61944, 121.28194),
+    "tanay, rizal": (14.4985, 121.2856),
+    "tanay rizal": (14.4985, 121.2856),
+    "tanay": (14.4985, 121.2856),
+
     # Additional requested locations (specific names first)
     "tagaytay": (14.0953, 120.9336),
     "cavite city": (14.4815, 120.9015),
@@ -419,7 +451,7 @@ def possible_flood_risk_dynamic(area_name, past_total_mm, forecast_total_mm, max
     _, peak_score = classify_rain_mmhr(max_hourly_mm)[0], classify_rain_mmhr(max_hourly_mm)[2]
     _, past_score = classify_accumulated_rain(past_total_mm)
     _, forecast_score = classify_accumulated_rain(forecast_total_mm)
-    flood_prone_bonus = 1 if area_name in FLOOD_PRONE_HINTS else 0
+    flood_prone_bonus = 1 if area_name in FLOOD_PRONE_BONUS_AREAS else 0
 
     total = max(peak_score, past_score, forecast_score) + flood_prone_bonus
     if total <= 1:
@@ -1574,8 +1606,13 @@ with st.sidebar:
     show_rain_layer = st.checkbox("Show rainfall layer from Open-Meteo", value=True)
     rainfall_coverage = st.selectbox(
         "Rainfall coverage",
-        ["Metro Manila", "Requested locations", "Nationwide key cities"],
-        index=1
+        [
+            "Marikina + Rizal Rain Watch",
+            "Metro Manila",
+            "Requested locations",
+            "Nationwide key cities",
+        ],
+        index=0
     )
     past_rain_hours = st.slider("Past rainfall accumulation window (hours)", 1, 48, 48)
     forecast_rain_hours = st.slider("Projected rainfall window (hours)", 1, 168, 168)
@@ -1607,7 +1644,9 @@ if use_fb:
 
 rainfall_df = pd.DataFrame()
 if show_rain_layer:
-    if rainfall_coverage == "Metro Manila":
+    if rainfall_coverage == "Marikina + Rizal Rain Watch":
+        selected_stations = RAIN_STATIONS_MARIKINA_UPSTREAM
+    elif rainfall_coverage == "Metro Manila":
         selected_stations = RAIN_STATIONS_METRO_MANILA
     elif rainfall_coverage == "Requested locations":
         selected_stations = RAIN_STATIONS_REQUESTED
@@ -1634,6 +1673,47 @@ if show_rain_layer and not rainfall_df.empty:
     r3.metric("Possible flood-risk points", high_flood_risk_count)
     r4.metric("Max rain window", f"{max_total_rain} mm")
 
+    if rainfall_coverage == "Marikina + Rizal Rain Watch":
+        st.subheader("Marikina Rainfall Watch — Local + Eastern Rizal Context")
+        st.caption(
+            "Compare Marikina with San Jose, Antipolo and Tanay rainfall. "
+            "These Open-Meteo points are screening context only; confirm flood decisions "
+            "with Marikina River water level and official PAGASA basin gauges."
+        )
+
+        marikina_watch_columns = [
+            "area", "current_mmhr", "past_total_mm", "forecast_total_mm",
+            "max_hourly_mm", "forecast_peak_mm", "forecast_peak_time",
+            "possible_flood_risk", "trend",
+        ]
+        st.dataframe(
+            rainfall_df[marikina_watch_columns].sort_values(
+                "forecast_total_mm", ascending=False
+            ),
+            use_container_width=True,
+        )
+
+        risk_rank = {"Unknown": 0, "Low": 1, "Moderate": 2, "High": 3, "Critical": 4}
+        watch_copy = rainfall_df.copy()
+        watch_copy["risk_rank"] = watch_copy["possible_flood_risk"].map(risk_rank).fillna(0)
+        highest_row = watch_copy.sort_values(
+            ["risk_rank", "forecast_total_mm"], ascending=[False, False]
+        ).iloc[0]
+        wettest_row = watch_copy.sort_values(
+            "forecast_total_mm", ascending=False, na_position="last"
+        ).iloc[0]
+        max_forecast = pd.to_numeric(
+            watch_copy["forecast_total_mm"], errors="coerce"
+        ).max()
+
+        w1, w2, w3 = st.columns(3)
+        w1.metric("Highest screening risk", str(highest_row["possible_flood_risk"]))
+        w2.metric("Wettest watch point", str(wettest_row["area"]))
+        w3.metric(
+            f"Max next {forecast_rain_hours}h",
+            f"{float(max_forecast):.1f} mm" if pd.notna(max_forecast) else "No data",
+        )
+
 
 if show_rain_layer and not rainfall_df.empty:
     st.subheader("Facebook-Ready Rainfall Snapshot")
@@ -1643,7 +1723,9 @@ if show_rain_layer and not rainfall_df.empty:
     )
 
     available_snapshot_regions = ["Metro Manila"]
-    if rainfall_coverage == "Requested locations":
+    if rainfall_coverage == "Marikina + Rizal Rain Watch":
+        available_snapshot_regions = ["Marikina + Rizal Rain Watch"]
+    elif rainfall_coverage == "Requested locations":
         available_snapshot_regions = [
             "North Luzon",
             "South Luzon",
@@ -1770,7 +1852,7 @@ with left:
 
             # Requested-location coverage also gets a conventional map pin so
             # every forecast station is immediately recognizable on the map.
-            if rainfall_coverage == "Requested locations":
+            if rainfall_coverage in ("Requested locations", "Marikina + Rizal Rain Watch"):
                 folium.Marker(
                     location=[rrow["lat"], rrow["lon"]],
                     tooltip=(
@@ -1831,7 +1913,12 @@ with right:
         st.info("No flood-related items detected from current sources.")
 
 if show_rain_layer and not rainfall_df.empty:
-    if rainfall_coverage == "Requested locations":
+    if rainfall_coverage == "Marikina + Rizal Rain Watch":
+        st.subheader("Marikina + Rizal Rain Watch — Rainfall Forecast")
+        st.caption(
+            "Marikina, San Jose (Antipolo), and Tanay are shown together for rapid rainfall comparison."
+        )
+    elif rainfall_coverage == "Requested locations":
         st.subheader("Requested Locations — Rainfall Forecast")
         st.caption(
             "Each row below is an Open-Meteo rainfall forecast node and the same location is pinned on the map above."
@@ -1857,7 +1944,9 @@ if show_rain_layer and not rainfall_df.empty:
 
     area_options = rainfall_df["area"].dropna().tolist()
     default_area_index = 0
-    if rainfall_coverage == "Requested locations" and "Imus, Cavite" in area_options:
+    if rainfall_coverage == "Marikina + Rizal Rain Watch" and "Marikina" in area_options:
+        default_area_index = area_options.index("Marikina")
+    elif rainfall_coverage == "Requested locations" and "Imus, Cavite" in area_options:
         default_area_index = area_options.index("Imus, Cavite")
     elif "Marikina" in area_options:
         default_area_index = area_options.index("Marikina")
