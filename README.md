@@ -15,7 +15,7 @@ This version removes manual CSV import.
 
 ```bash
 pip install -r requirements.txt
-streamlit run app4.py
+streamlit run marikina.py
 ```
 
 Or double-click:
